@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vokabeltrainer – Mixed Tasks</title>
+<style>
+  * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { margin:0; background:#f4f4f4; display:flex; justify-content:center; }
+  .app{
+    background:#fff; max-width: 920px; width:100%;
+    margin:12px; padding:12px; border-radius:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.10);
+  }
+  h1{ text-align:center; font-size:18px; margin:6px 0 10px; }
+  .topbar{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .score{ font-size:12px; color:#555; }
+  .modeRow{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  select, button, input{
+    border-radius:8px; border:1px solid #ccc; padding:8px 10px; font-size:13px;
+  }
+  button{
+    border:none; background:#007bff; color:#fff; cursor:pointer;
+  }
+  button:hover{ background:#0062cc; }
+  button.secondary{ background:#222; }
+  button.secondary:hover{ background:#000; }
+  button.ghost{ background:#e9ecef; color:#111; border:1px solid #d0d7de; }
+  button.ghost:hover{ background:#dde3ea; }
+
+  .card{
+    margin-top:10px;
+    border:1px solid #e6e6e6; border-radius:10px; padding:12px;
+    background:#fafafa;
+  }
+  .meta{ font-weight:700; font-size:12px; color:#444; margin-bottom:6px; }
+  .question{ font-weight:700; margin-bottom:8px; }
+  .prompt{
+    padding:10px; background:#fff; border:1px solid #e6e6e6; border-radius:10px;
+    font-size:16px; font-weight:700;
+  }
+  .answers{ display:grid; gap:8px; margin-top:10px; }
+  .answer{
+    border:1px solid #ccc; border-radius:10px;
+    padding:10px; background:#fff; cursor:pointer;
+  }
+  .answer:hover{ background:#f2f2f2; }
+  .answer.correct{ background:#d4edda; border-color:#28a745; }
+  .answer.wrong{ background:#f8d7da; border-color:#dc3545; }
+  .answer.disabled{ pointer-events:none; opacity:0.98; }
+
+  .typeRow{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .typeRow input{ flex:1; min-width:220px; }
+  .feedback{ margin-top:10px; font-weight:800; min-height:20px; }
+  .hint{
+    display:none; margin-top:10px;
+    padding:10px; background:#fff7e6;
+    border:1px solid #ffe1a6; border-left:4px solid #ffb000;
+    border-radius:10px; font-size:12px; color:#333;
+  }
+  .controls{ margin-top:12px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .progress{ font-size:12px; color:#555; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Vokabeltrainer – Multiple Choice & Tippen</h1>
+
+  <div class="topbar">
+    <div class="modeRow">
+      <label for="mode" style="font-size:12px;color:#444;font-weight:700;">Modus:</label>
+      <select id="mode" onchange="restart(true)">
+        <option value="mc_en_de">Multiple Choice: EN → DE</option>
+        <option value="mc_de_en">Multiple Choice: DE → EN</option>
+        <option value="type_en_de">Tippen: EN → DE</option>
+        <option value="type_de_en">Tippen: DE → EN</option>
+        <option value="mixed">Gemischt (alles)</option>
+      </select>
+
+      <button class="ghost" onclick="toggleShuffle()" id="shuffleBtn">Reihenfolge: Zufall</button>
+    </div>
+
+    <div class="score" id="score">Punkte: 0</div>
+  </div>
+
+  <div class="card">
+    <div class="meta" id="meta"></div>
+    <div class="question" id="question"></div>
+    <div class="prompt" id="prompt"></div>
+
+    <div id="mcArea" style="display:none;">
+      <div class="answers" id="answers"></div>
+    </div>
+
+    <div id="typeArea" style="display:none;">
+      <div class="typeRow">
+        <input id="typeInput" type="text" placeholder="Antwort eintippen …" onkeydown="onTypeKey(event)" />
+        <button onclick="submitTyping()">Prüfen</button>
+        <button class="ghost" onclick="reveal()">Lösung zeigen</button>
+      </div>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+    <div class="hint" id="hint"></div>
+
+    <div class="controls">
+      <div class="progress" id="progress"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="secondary" onclick="restart()">Neu starten</button>
+        <button onclick="next()">Nächste Aufgabe</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== Vokabelliste (aus dem Foto) =====
+   Format:
+   en: Englisch, de: Deutsch, note optional
+*/
+const VOCAB = [
+  { en:"a culprit", de:"der Täter / die Täterin" },
+  { en:"an account", de:"ein Konto / ein Account" },
+  { en:"a batch-job run", de:"Stapelverarbeitungslauf" },
+  { en:"dandruff", de:"Schuppen" },
+  { en:"facetious", de:"scherzhaft, flapsig" },
+  { en:"home truths", de:"unangenehme Wahrheiten" },
+  { en:"ICT", de:"IKT (Informations- und Kommunikationstechnologie)" },
+  { en:"ingenuity", de:"Einfallsreichtum" },
+  { en:"innocent until proven guilty", de:"Es gilt die Unschuldsvermutung." },
+  { en:"jabberwocky", de:"Kauderwelsch, Nonsenssprache" },
+  { en:"subtle", de:"subtil, feinsinnig" },
+  { en:"to access", de:"zugreifen" },
+  { en:"to accuse", de:"beschuldigen" },
+  { en:"to be released on bail", de:"gegen Kaution freigelassen werden" },
+  { en:"to boast", de:"angeben" },
+  { en:"to challenge", de:"herausfordern" },
+  { en:"to confront", de:"entgegentreten / konfrontieren" },
+  { en:"to cope with", de:"mit etwas zurechtkommen" },
+  { en:"to escape", de:"entkommen" },
+  { en:"to glare at", de:"jemanden böse anschauen" },
+  { en:"to hack into", de:"„hacken“, knacken" },
+  { en:"to leak my eyes", de:"to cry (weinen)" },
+  { en:"to own up", de:"(sich) etwas eingestehen" },
+  { en:"to struggle with", de:"deal with – kämpfen mit" },
+];
+
+/* ===== State ===== */
+let idx = 0;
+let score = 0;
+let done = false;
+let current = null;
+let currentCorrectIdx = 0;
+let shuffle = true;
+let order = [];
+
+const modeEl = document.getElementById("mode");
+const scoreEl = document.getElementById("score");
+const metaEl = document.getElementById("meta");
+const questionEl = document.getElementById("question");
+const promptEl = document.getElementById("prompt");
+const mcArea = document.getElementById("mcArea");
+const answersEl = document.getElementById("answers");
+const typeArea = document.getElementById("typeArea");
+const typeInput = document.getElementById("typeInput");
+const feedbackEl = document.getElementById("feedback");
+const hintEl = document.getElementById("hint");
+const progressEl = document.getElementById("progress");
+const shuffleBtn = document.getElementById("shuffleBtn");
+
+/* ===== Helpers ===== */
+function normalize(s){
+  // tolerant: lower, trim, collapse spaces, replace umlauts/ß to allow easy typing
+  return (s ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
+}
+
+function randInt(n){ return Math.floor(Math.random()*n); }
+
+function shuffledIndices(n){
+  const arr = Array.from({length:n}, (_,i)=>i);
+  for(let i=n-1;i>0;i--){
+    const j = randInt(i+1);
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function pick3Wrong(correctIndex, wantDE){
+  // choose 3 distinct wrong answers (either de or en side)
+  const pool = [];
+  for(let i=0;i<VOCAB.length;i++){
+    if(i !== correctIndex) pool.push(i);
+  }
+  const picks = [];
+  while(picks.length < 3 && pool.length){
+    const j = randInt(pool.length);
+    picks.push(pool[j]);
+    pool.splice(j,1);
+  }
+  return picks.map(i => wantDE ? VOCAB[i].de : VOCAB[i].en);
+}
+
+function buildRound(){
+  const vocabIndex = order[idx];
+  const v = VOCAB[vocabIndex];
+
+  // decide mode (mixed picks one)
+  let mode = modeEl.value;
+  if(mode === "mixed"){
+    const modes = ["mc_en_de","mc_de_en","type_en_de","type_de_en"];
+    mode = modes[randInt(modes.length)];
+  }
+
+  current = { v, vocabIndex, mode };
+
+  done = false;
+  feedbackEl.textContent = "";
+  hintEl.style.display = "none";
+  hintEl.textContent = "";
+
+  // meta/progress
+  metaEl.textContent = `Wortschatz (${VOCAB.length} Wörter)`;
+  progressEl.textContent = `Aufgabe ${idx+1} von ${VOCAB.length}`;
+
+  // render by mode
+  if(mode.startsWith("mc")){
+    mcArea.style.display = "block";
+    typeArea.style.display = "none";
+    renderMC(mode, v, vocabIndex);
+  } else {
+    mcArea.style.display = "none";
+    typeArea.style.display = "block";
+    renderTyping(mode, v);
+  }
+}
+
+function renderMC(mode, v, vocabIndex){
+  answersEl.innerHTML = "";
+
+  const askEN = (mode === "mc_en_de");
+  questionEl.textContent = askEN ? "Wähle die richtige deutsche Bedeutung:" : "Wähle das richtige englische Wort:";
+  promptEl.textContent = askEN ? v.en : v.de;
+
+  const correct = askEN ? v.de : v.en;
+  const wrongs = pick3Wrong(vocabIndex, askEN); // wantDE if EN->DE
+
+  const options = [correct, ...wrongs];
+  // shuffle options and remember correct index
+  const optOrder = shuffledIndices(4);
+  currentCorrectIdx = optOrder.indexOf(0);
+
+  optOrder.forEach((origIdx, shownIdx) => {
+    const b = document.createElement("div");
+    b.className = "answer";
+    b.textContent = options[origIdx];
+    b.onclick = () => answerMC(shownIdx, b);
+    answersEl.appendChild(b);
+  });
+}
+
+function answerMC(chosenIdx, chosenBtn){
+  if(done) return;
+  done = true;
+
+  [...answersEl.children].forEach((el, j) => {
+    el.classList.add("disabled");
+    if(j === currentCorrectIdx) el.classList.add("correct");
+  });
+
+  if(chosenIdx === currentCorrectIdx){
+    score++;
+    scoreEl.textContent = "Punkte: " + score;
+    feedbackEl.textContent = "Richtig!";
+  } else {
+    chosenBtn.classList.add("wrong");
+    feedbackEl.textContent = "Falsch.";
+  }
+
+  showHint();
+}
+
+function renderTyping(mode, v){
+  const askEN = (mode === "type_en_de"); // prompt EN, user types DE
+  questionEl.textContent = askEN ? "Tippe die deutsche Bedeutung:" : "Tippe das englische Wort:";
+  promptEl.textContent = askEN ? v.en : v.de;
+
+  typeInput.value = "";
+  typeInput.focus();
+
+  // store expected in current
+  current.expected = askEN ? v.de : v.en;
+}
+
+function submitTyping(){
+  if(done) return;
+  done = true;
+
+  const user = normalize(typeInput.value);
+  const expected = normalize(current.expected);
+
+  // allow multiple correct variants separated by / or ,
+  const variants = current.expected.split(/[\/,]/g).map(x => normalize(x)).filter(Boolean);
+
+  const ok = variants.includes(user) || user === expected;
+
+  if(ok){
+    score++;
+    scoreEl.textContent = "Punkte: " + score;
+    feedbackEl.textContent = "Richtig!";
+  } else {
+    feedbackEl.textContent = "Falsch.";
+  }
+
+  showHint(true);
+}
+
+function onTypeKey(e){
+  if(e.key === "Enter") submitTyping();
+}
+
+function reveal(){
+  if(!current) return;
+  hintEl.textContent = `Lösung: ${current.expected}`;
+  hintEl.style.display = "block";
+}
+
+function showHint(includeSolution=false){
+  const v = current.v;
+  if(includeSolution){
+    hintEl.textContent = `Lösung: ${current.expected}`;
+  } else {
+    // short hint: show the pair
+    hintEl.textContent = `Merke: ${v.en} = ${v.de}`;
+  }
+  hintEl.style.display = "block";
+}
+
+/* ===== Controls ===== */
+function next(){
+  idx++;
+  if(idx >= VOCAB.length){
+    idx = 0;
+    score = 0;
+    scoreEl.textContent = "Punkte: 0";
+  }
+  buildRound();
+}
+
+function restart(keepScore=false){
+  idx = 0;
+  if(!keepScore){
+    score = 0;
+    scoreEl.textContent = "Punkte: 0";
+  }
+  order = shuffle ? shuffledIndices(VOCAB.length) : Array.from({length:VOCAB.length}, (_,i)=>i);
+  buildRound();
+}
+
+function toggleShuffle(){
+  shuffle = !shuffle;
+  shuffleBtn.textContent = "Reihenfolge: " + (shuffle ? "Zufall" : "Fix");
+  restart(true);
+}
+
+/* init */
+restart(false);
+</script>
+</body>
+</html>
