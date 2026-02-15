@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Vokabeltrainer – Mixed Tasks</title>
+<title>Vokabeltrainer – Quiz (minimal) + Zusatzinfo</title>
 <style>
   * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
   body { margin:0; background:#f4f4f4; display:flex; justify-content:center; }
@@ -19,9 +19,7 @@
   select, button, input{
     border-radius:8px; border:1px solid #ccc; padding:8px 10px; font-size:13px;
   }
-  button{
-    border:none; background:#007bff; color:#fff; cursor:pointer;
-  }
+  button{ border:none; background:#007bff; color:#fff; cursor:pointer; }
   button:hover{ background:#0062cc; }
   button.secondary{ background:#222; }
   button.secondary:hover{ background:#000; }
@@ -37,8 +35,9 @@
   .question{ font-weight:700; margin-bottom:8px; }
   .prompt{
     padding:10px; background:#fff; border:1px solid #e6e6e6; border-radius:10px;
-    font-size:16px; font-weight:700;
+    font-size:16px; font-weight:800;
   }
+
   .answers{ display:grid; gap:8px; margin-top:10px; }
   .answer{
     border:1px solid #ccc; border-radius:10px;
@@ -51,24 +50,42 @@
 
   .typeRow{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
   .typeRow input{ flex:1; min-width:220px; }
-  .feedback{ margin-top:10px; font-weight:800; min-height:20px; }
-  .hint{
-    display:none; margin-top:10px;
-    padding:10px; background:#fff7e6;
-    border:1px solid #ffe1a6; border-left:4px solid #ffb000;
-    border-radius:10px; font-size:12px; color:#333;
+
+  .feedback{ margin-top:10px; font-weight:900; min-height:20px; }
+  .afterRow{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .miniResult{
+    font-size:13px; color:#222; font-weight:700;
+    background:#fff; border:1px solid #e6e6e6; border-radius:10px;
+    padding:8px 10px;
   }
+
+  /* Luxus-Zusatzinfo (ausklappbar) */
+  .extra{
+    display:none;
+    margin-top:10px;
+    padding:10px;
+    background:#fff7e6;
+    border:1px solid #ffe1a6;
+    border-left:4px solid #ffb000;
+    border-radius:10px;
+    font-size:12px; color:#333;
+    line-height:1.35;
+  }
+  .extra .head{ font-weight:900; margin-bottom:6px; }
+  .extra .label{ font-weight:800; }
+  .extra .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
   .controls{ margin-top:12px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
   .progress{ font-size:12px; color:#555; }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>Vokabeltrainer – Multiple Choice & Tippen</h1>
+  <h1>Vokabeltrainer – Quiz (minimal) + Zusatzinfo</h1>
 
   <div class="topbar">
     <div class="modeRow">
-      <label for="mode" style="font-size:12px;color:#444;font-weight:700;">Modus:</label>
+      <label for="mode" style="font-size:12px;color:#444;font-weight:800;">Modus:</label>
       <select id="mode" onchange="restart(true)">
         <option value="mc_en_de">Multiple Choice: EN → DE</option>
         <option value="mc_de_en">Multiple Choice: DE → EN</option>
@@ -96,12 +113,19 @@
       <div class="typeRow">
         <input id="typeInput" type="text" placeholder="Antwort eintippen …" onkeydown="onTypeKey(event)" />
         <button onclick="submitTyping()">Prüfen</button>
-        <button class="ghost" onclick="reveal()">Lösung zeigen</button>
       </div>
     </div>
 
     <div class="feedback" id="feedback"></div>
-    <div class="hint" id="hint"></div>
+
+    <!-- Minimal: zeigt nach Antwort nur Primär -->
+    <div class="afterRow" id="afterRow" style="display:none;">
+      <div class="miniResult" id="miniResult"></div>
+      <button class="ghost" id="extraBtn" onclick="toggleExtra()">Zusatzinfo anzeigen</button>
+    </div>
+
+    <!-- Luxus: klappt per Button aus -->
+    <div class="extra" id="extra"></div>
 
     <div class="controls">
       <div class="progress" id="progress"></div>
@@ -114,71 +138,77 @@
 </div>
 
 <script>
-/* ===== Vokabelliste (aus dem Foto) =====
-   Format:
-   en: Englisch, de: Deutsch, note optional
+/*
+Didaktik:
+- Quizansicht minimal (nur Aufgabe + Antwort)
+- Nach Antwort: nur Primärlösung (prüfungsrelevant)
+- Button: Zusatzinfo (Nebenbedeutungen + Wortverbindung + Beispielsatz)
 */
+
 const VOCAB = [
-  { en:"a culprit", de:"der Täter / die Täterin" },
-  { en:"an account", de:"ein Konto / ein Account" },
-  { en:"a batch-job run", de:"Stapelverarbeitungslauf" },
-  { en:"dandruff", de:"Schuppen" },
-  { en:"facetious", de:"scherzhaft, flapsig" },
-  { en:"home truths", de:"unangenehme Wahrheiten" },
-  { en:"ICT", de:"IKT (Informations- und Kommunikationstechnologie)" },
-  { en:"ingenuity", de:"Einfallsreichtum" },
-  { en:"innocent until proven guilty", de:"Es gilt die Unschuldsvermutung." },
-  { en:"jabberwocky", de:"Kauderwelsch, Nonsenssprache" },
-  { en:"subtle", de:"subtil, feinsinnig" },
-  { en:"to access", de:"zugreifen" },
-  { en:"to accuse", de:"beschuldigen" },
-  { en:"to be released on bail", de:"gegen Kaution freigelassen werden" },
-  { en:"to boast", de:"angeben" },
-  { en:"to challenge", de:"herausfordern" },
-  { en:"to confront", de:"entgegentreten / konfrontieren" },
-  { en:"to cope with", de:"mit etwas zurechtkommen" },
-  { en:"to escape", de:"entkommen" },
-  { en:"to glare at", de:"jemanden böse anschauen" },
-  { en:"to hack into", de:"hacken, knacken" },
-  { en:"to leak my eyes", de:"weinen" },                 // FIX
-  { en:"to own up", de:"(sich) etwas eingestehen" },
-  { en:"to struggle with", de:"mit etwas kämpfen" },     // FIX
+  { en:"a culprit", primary:"der Täter / die Täterin", secondary:["schuldige Person"], collocation:"", ex_en:"The police found the culprit.", ex_de:"Die Polizei fand den Täter." },
+  { en:"an account", primary:"ein Konto / ein Account", secondary:["Benutzerkonto"], collocation:"", ex_en:"I created a new account online.", ex_de:"Ich habe online ein neues Konto erstellt." },
+  { en:"a batch-job run", primary:"Stapelverarbeitungslauf", secondary:[], collocation:"", ex_en:"The computer started a batch-job run at night.", ex_de:"Der Computer startete nachts einen Stapelverarbeitungslauf." },
+  { en:"dandruff", primary:"Schuppen", secondary:[], collocation:"", ex_en:"He has dandruff on his jacket.", ex_de:"Er hat Schuppen auf seiner Jacke." },
+  { en:"facetious", primary:"scherzhaft, flapsig", secondary:["nicht ganz ernst gemeint"], collocation:"", ex_en:"She made a facetious comment.", ex_de:"Sie machte eine scherzhafte Bemerkung." },
+  { en:"home truths", primary:"unangenehme Wahrheiten", secondary:[], collocation:"", ex_en:"He told me some home truths.", ex_de:"Er sagte mir ein paar unangenehme Wahrheiten." },
+  { en:"ICT", primary:"IKT (Informations- und Kommunikationstechnologie)", secondary:[], collocation:"", ex_en:"We learn about ICT at school.", ex_de:"Wir lernen in der Schule etwas über IKT." },
+  { en:"ingenuity", primary:"Einfallsreichtum", secondary:["Kreativität"], collocation:"", ex_en:"She solved the problem with great ingenuity.", ex_de:"Sie löste das Problem mit großem Einfallsreichtum." },
+  { en:"innocent until proven guilty", primary:"Es gilt die Unschuldsvermutung.", secondary:[], collocation:"", ex_en:"In court, you are innocent until proven guilty.", ex_de:"Vor Gericht gilt die Unschuldsvermutung." },
+  { en:"jabberwocky", primary:"Kauderwelsch, Nonsenssprache", secondary:[], collocation:"", ex_en:"The baby spoke in jabberwocky.", ex_de:"Das Baby sprach Kauderwelsch." },
+  { en:"subtle", primary:"subtil, feinsinnig", secondary:["kaum bemerkbar"], collocation:"", ex_en:"There was a subtle change in his voice.", ex_de:"Es gab eine subtile Veränderung in seiner Stimme." },
+
+  { en:"to access", primary:"zugreifen", secondary:["auf etwas zugreifen"], collocation:"access something", ex_en:"You can access the file online.", ex_de:"Du kannst online auf die Datei zugreifen." },
+  { en:"to accuse", primary:"beschuldigen", secondary:["anklagen"], collocation:"accuse someone of something", ex_en:"She accused him of cheating.", ex_de:"Sie beschuldigte ihn des Schummelns." },
+  { en:"to be released on bail", primary:"gegen Kaution freigelassen werden", secondary:[], collocation:"released on bail", ex_en:"He was released on bail yesterday.", ex_de:"Er wurde gestern gegen Kaution freigelassen." },
+  { en:"to boast", primary:"angeben", secondary:["prahlen"], collocation:"boast about something", ex_en:"He boasted about his new bike.", ex_de:"Er prahlte mit seinem neuen Fahrrad." },
+  { en:"to challenge", primary:"herausfordern", secondary:[], collocation:"challenge someone to something", ex_en:"She challenged her friend to a game.", ex_de:"Sie forderte ihre Freundin zu einem Spiel heraus." },
+  { en:"to confront", primary:"entgegentreten / konfrontieren", secondary:["sich stellen"], collocation:"confront someone / confront something", ex_en:"He confronted his fears.", ex_de:"Er stellte sich seinen Ängsten." },
+  { en:"to cope with", primary:"mit etwas zurechtkommen", secondary:["bewältigen"], collocation:"cope with something", ex_en:"She copes well with stress.", ex_de:"Sie kommt gut mit Stress zurecht." },
+  { en:"to escape", primary:"entkommen", secondary:["fliehen"], collocation:"escape from something", ex_en:"The prisoner escaped from prison.", ex_de:"Der Gefangene entkam aus dem Gefängnis." },
+  { en:"to glare at", primary:"jemanden böse anschauen", secondary:["anblitzen"], collocation:"glare at someone", ex_en:"She glared at him angrily.", ex_de:"Sie schaute ihn wütend an." },
+  { en:"to hack into", primary:"hacken, knacken", secondary:["unerlaubt eindringen"], collocation:"hack into something", ex_en:"Someone hacked into my account.", ex_de:"Jemand hat mein Konto gehackt." },
+
+  // Hinweis: "to leak my eyes" ist unüblich; ich halte die Prüfungsbedeutung aber fix.
+  { en:"to leak my eyes", primary:"weinen", secondary:["Tränen vergießen"], collocation:"(rare) leak my eyes", ex_en:"She started to leak her eyes.", ex_de:"Sie begann zu weinen." },
+
+  { en:"to own up", primary:"(sich) etwas eingestehen", secondary:["zugeben"], collocation:"own up to something", ex_en:"He owned up to his mistake.", ex_de:"Er gab seinen Fehler zu." },
+  { en:"to struggle with", primary:"mit etwas kämpfen", secondary:["Schwierigkeiten haben mit","sich abmühen mit"], collocation:"struggle with something", ex_en:"He struggles with English grammar.", ex_de:"Er hat Schwierigkeiten mit der englischen Grammatik." },
 ];
 
 /* ===== State ===== */
 let idx = 0;
 let score = 0;
 let done = false;
-let current = null;
-let currentCorrectIdx = 0;
 let shuffle = true;
 let order = [];
+
+let current = null;             // {v, mode, expectedPrimary, promptText, answerText}
+let currentCorrectIdx = 0;
 
 const modeEl = document.getElementById("mode");
 const scoreEl = document.getElementById("score");
 const metaEl = document.getElementById("meta");
 const questionEl = document.getElementById("question");
 const promptEl = document.getElementById("prompt");
+
 const mcArea = document.getElementById("mcArea");
 const answersEl = document.getElementById("answers");
+
 const typeArea = document.getElementById("typeArea");
 const typeInput = document.getElementById("typeInput");
+
 const feedbackEl = document.getElementById("feedback");
-const hintEl = document.getElementById("hint");
 const progressEl = document.getElementById("progress");
+
+const afterRow = document.getElementById("afterRow");
+const miniResult = document.getElementById("miniResult");
+const extraBtn = document.getElementById("extraBtn");
+const extraEl = document.getElementById("extra");
+
 const shuffleBtn = document.getElementById("shuffleBtn");
 
 /* ===== Helpers ===== */
-function normalize(s){
-  // tolerant: lower, trim, collapse spaces, replace umlauts/ß to allow easy typing
-  return (s ?? "")
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
-}
-
 function randInt(n){ return Math.floor(Math.random()*n); }
 
 function shuffledIndices(n){
@@ -190,26 +220,66 @@ function shuffledIndices(n){
   return arr;
 }
 
-function pick3Wrong(correctIndex, wantDE){
-  // choose 3 distinct wrong answers (either de or en side)
+function normalize(s){
+  return (s ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g," ")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
+}
+
+function pick3Wrong(correctIndex, wantPrimaryDE){
   const pool = [];
-  for(let i=0;i<VOCAB.length;i++){
-    if(i !== correctIndex) pool.push(i);
-  }
+  for(let i=0;i<VOCAB.length;i++) if(i !== correctIndex) pool.push(i);
+
   const picks = [];
   while(picks.length < 3 && pool.length){
     const j = randInt(pool.length);
     picks.push(pool[j]);
     pool.splice(j,1);
   }
-  return picks.map(i => wantDE ? VOCAB[i].de : VOCAB[i].en);
+
+  return picks.map(i => wantPrimaryDE ? VOCAB[i].primary : VOCAB[i].en);
 }
 
+function setExtraVisible(visible){
+  extraEl.style.display = visible ? "block" : "none";
+  extraBtn.textContent = visible ? "Zusatzinfo verbergen" : "Zusatzinfo anzeigen";
+}
+
+function buildExtra(v){
+  const sec = (v.secondary && v.secondary.length) ? v.secondary.map(x=>`• ${x}`).join("<br>") : "–";
+  const coll = v.collocation ? `<span class="mono">${escapeHtml(v.collocation)}</span>` : "–";
+  const exEn = v.ex_en ? escapeHtml(v.ex_en) : "–";
+  const exDe = v.ex_de ? escapeHtml(v.ex_de) : "–";
+
+  return `
+    <div class="head">Zusatzinfo</div>
+    <div><span class="label">Primär (Quiz):</span> ${escapeHtml(v.primary)}</div>
+    <div style="margin-top:6px;"><span class="label">Nebenbedeutungen:</span><br>${sec}</div>
+    <div style="margin-top:6px;"><span class="label">Wortverbindung:</span> ${coll}</div>
+    <div style="margin-top:6px;"><span class="label">Beispiel:</span><br>
+      <span class="mono">${exEn}</span><br>
+      ${exDe}
+    </div>
+  `;
+}
+
+function escapeHtml(str){
+  return (str ?? "").toString()
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
+
+/* ===== Round ===== */
 function buildRound(){
   const vocabIndex = order[idx];
   const v = VOCAB[vocabIndex];
 
-  // decide mode (mixed picks one)
   let mode = modeEl.value;
   if(mode === "mixed"){
     const modes = ["mc_en_de","mc_de_en","type_en_de","type_de_en"];
@@ -220,14 +290,14 @@ function buildRound(){
 
   done = false;
   feedbackEl.textContent = "";
-  hintEl.style.display = "none";
-  hintEl.textContent = "";
+  afterRow.style.display = "none";
+  miniResult.textContent = "";
+  extraEl.innerHTML = "";
+  setExtraVisible(false);
 
-  // meta/progress
-  metaEl.textContent = `Wortschatz (${VOCAB.length} Wörter)`;
+  metaEl.textContent = `Wortschatz: ${VOCAB.length} Wörter`;
   progressEl.textContent = `Aufgabe ${idx+1} von ${VOCAB.length}`;
 
-  // render by mode
   if(mode.startsWith("mc")){
     mcArea.style.display = "block";
     typeArea.style.display = "none";
@@ -242,15 +312,14 @@ function buildRound(){
 function renderMC(mode, v, vocabIndex){
   answersEl.innerHTML = "";
 
-  const askEN = (mode === "mc_en_de");
-  questionEl.textContent = askEN ? "Wähle die richtige deutsche Bedeutung:" : "Wähle das richtige englische Wort:";
-  promptEl.textContent = askEN ? v.en : v.de;
+  const askEN = (mode === "mc_en_de"); // prompt EN, choose DE
+  questionEl.textContent = askEN ? "Wähle die richtige Bedeutung:" : "Wähle das richtige englische Wort:";
+  promptEl.textContent = askEN ? v.en : v.primary;
 
-  const correct = askEN ? v.de : v.en;
-  const wrongs = pick3Wrong(vocabIndex, askEN); // wantDE if EN->DE
+  const correct = askEN ? v.primary : v.en;
+  const wrongs = pick3Wrong(vocabIndex, askEN);
 
   const options = [correct, ...wrongs];
-  // shuffle options and remember correct index
   const optOrder = shuffledIndices(4);
   currentCorrectIdx = optOrder.indexOf(0);
 
@@ -261,6 +330,9 @@ function renderMC(mode, v, vocabIndex){
     b.onclick = () => answerMC(shownIdx, b);
     answersEl.appendChild(b);
   });
+
+  // für Anzeige nachher:
+  current.expectedPrimary = askEN ? v.primary : v.en;
 }
 
 function answerMC(chosenIdx, chosenBtn){
@@ -272,7 +344,8 @@ function answerMC(chosenIdx, chosenBtn){
     if(j === currentCorrectIdx) el.classList.add("correct");
   });
 
-  if(chosenIdx === currentCorrectIdx){
+  const ok = (chosenIdx === currentCorrectIdx);
+  if(ok){
     score++;
     scoreEl.textContent = "Punkte: " + score;
     feedbackEl.textContent = "Richtig!";
@@ -281,19 +354,18 @@ function answerMC(chosenIdx, chosenBtn){
     feedbackEl.textContent = "Falsch.";
   }
 
-  showHint();
+  showMinimalResult();
 }
 
 function renderTyping(mode, v){
-  const askEN = (mode === "type_en_de"); // prompt EN, user types DE
-  questionEl.textContent = askEN ? "Tippe die deutsche Bedeutung:" : "Tippe das englische Wort:";
-  promptEl.textContent = askEN ? v.en : v.de;
+  const askEN = (mode === "type_en_de"); // prompt EN, type DE primary
+  questionEl.textContent = askEN ? "Tippe die Bedeutung (Primär):" : "Tippe das englische Wort:";
+  promptEl.textContent = askEN ? v.en : v.primary;
 
   typeInput.value = "";
   typeInput.focus();
 
-  // store expected in current
-  current.expected = askEN ? v.de : v.en;
+  current.expectedPrimary = askEN ? v.primary : v.en;
 }
 
 function submitTyping(){
@@ -301,12 +373,17 @@ function submitTyping(){
   done = true;
 
   const user = normalize(typeInput.value);
-  const expected = normalize(current.expected);
+  const expected = normalize(current.expectedPrimary);
 
-  // allow multiple correct variants separated by / or ,
-  const variants = current.expected.split(/[\/,]/g).map(x => normalize(x)).filter(Boolean);
+  // Tipp: primär kann Varianten mit / enthalten → akzeptiere jede Variante als korrekt
+  const variants = current.expectedPrimary
+    .split("/")
+    .map(x => normalize(x))
+    .map(x => x.replace(/^\s*der\s+|^\s*die\s+|^\s*das\s+/,"")) // kleine Toleranz bei Artikeln in Varianten
+    .filter(Boolean);
 
-  const ok = variants.includes(user) || user === expected;
+  const userNorm = user.replace(/^\s*der\s+|^\s*die\s+|^\s*das\s+/,"");
+  const ok = (userNorm === expected) || variants.includes(userNorm);
 
   if(ok){
     score++;
@@ -316,28 +393,35 @@ function submitTyping(){
     feedbackEl.textContent = "Falsch.";
   }
 
-  showHint(true);
+  showMinimalResult();
 }
 
 function onTypeKey(e){
   if(e.key === "Enter") submitTyping();
 }
 
-function reveal(){
-  if(!current) return;
-  hintEl.textContent = `Lösung: ${current.expected}`;
-  hintEl.style.display = "block";
+/* ===== After answer UI ===== */
+function showMinimalResult(){
+  const v = current.v;
+  afterRow.style.display = "flex";
+
+  // Minimal: nur die primäre Zuordnung zeigen
+  // EN->DE oder DE->EN je nach Mode
+  const mode = current.mode;
+  if(mode === "mc_en_de" || mode === "type_en_de" || (mode === "mixed" && promptEl.textContent === v.en)){
+    miniResult.textContent = `${v.en} = ${v.primary}`;
+  } else {
+    miniResult.textContent = `${v.primary} = ${v.en}`;
+  }
+
+  // Luxus-Inhalt vorbereiten (aber noch versteckt)
+  extraEl.innerHTML = buildExtra(v);
+  setExtraVisible(false);
 }
 
-function showHint(includeSolution=false){
-  const v = current.v;
-  if(includeSolution){
-    hintEl.textContent = `Lösung: ${current.expected}`;
-  } else {
-    // short hint: show the pair
-    hintEl.textContent = `Merke: ${v.en} = ${v.de}`;
-  }
-  hintEl.style.display = "block";
+function toggleExtra(){
+  const visible = extraEl.style.display === "block";
+  setExtraVisible(!visible);
 }
 
 /* ===== Controls ===== */
@@ -372,3 +456,4 @@ restart(false);
 </script>
 </body>
 </html>
+
